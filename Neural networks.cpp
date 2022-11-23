@@ -418,7 +418,7 @@ int main()
 
             // Train the net what the outputs should have been:
             trainData.getTargetOutputs(targetVals);
-            //showVectorVals("Targets:", targetVals);
+            showVectorVals("Targets:", targetVals);
             if (targetVals[0] == resultVals[0]) {
                 cout << endl << "found";
                 break;
