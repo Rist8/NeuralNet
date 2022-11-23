@@ -381,57 +381,56 @@ void showVectorVals(string label, vector<double>& v)
 
 int main()
 {
-    for (int i = 0; i < 100; ++i) {
-    TrainingData trainData("trainingData.txt");
+    //for (int i = 0; i < 100; ++i) {
+        TrainingData trainData("trainingData.txt");
 
-    // e.g., { 3, 2, 1 }
-    vector<unsigned> topology;
-    trainData.getTopology(topology);
+        // e.g., { 3, 2, 1 }
+        vector<unsigned> topology;
+        trainData.getTopology(topology);
 
-    Net myNet(topology);
+        Net myNet(topology);
 
-    ifstream fin("neuralNet.txt");
-    if (fin.is_open()) {
-        Net myNet1(&fin, &topology);
-        myNet = myNet1;
-    }
-    fin.close();
-
-
-    vector<double> inputVals, targetVals, resultVals;
-    int trainingPass = 0;
-
-    while (!trainData.isEof()) {
-        ++trainingPass;
-        //cout << endl << "Pass " << trainingPass;
-
-        // Get new input data and feed it forward:
-        if (trainData.getNextInputs(inputVals) != topology[0]) {
-            break;
+        ifstream fin("neuralNet.txt");
+        if (fin.is_open()) {
+            Net myNet1(&fin, &topology);
+            myNet = myNet1;
         }
-        //showVectorVals(": Inputs:", inputVals);
-        myNet.feedForward(inputVals);
+        fin.close();
 
-        // Collect the net's actual output results:
-        myNet.getResults(resultVals);
-        //showVectorVals("Outputs:", resultVals);
 
-        // Train the net what the outputs should have been:
-        trainData.getTargetOutputs(targetVals);
-        //showVectorVals("Targets:", targetVals);
-        if (targetVals[0] == resultVals[0]) {
-            cout << endl << "found";
-            break;
+        vector<double> inputVals, targetVals, resultVals;
+        int trainingPass = 0;
+
+        while (!trainData.isEof()) {
+            ++trainingPass;
+            cout << endl << "Pass " << trainingPass;
+
+            // Get new input data and feed it forward:
+            if (trainData.getNextInputs(inputVals) != topology[0]) {
+                break;
+            }
+            showVectorVals(": Inputs:", inputVals);
+            myNet.feedForward(inputVals);
+
+            // Collect the net's actual output results:
+            myNet.getResults(resultVals);
+            showVectorVals("Outputs:", resultVals);
+
+            // Train the net what the outputs should have been:
+            trainData.getTargetOutputs(targetVals);
+            //showVectorVals("Targets:", targetVals);
+            if (targetVals[0] == resultVals[0]) {
+                cout << endl << "found";
+                break;
+            }
+            assert(targetVals.size() == topology.back());
+
+            myNet.backProp(targetVals);
+
+            // Report how well the training is working, average over recent samples:
+                cout << "Net recent average error: " << myNet.getRecentAverageError() << endl;
         }
-        assert(targetVals.size() == topology.back());
-
-        myNet.backProp(targetVals);
-
-        // Report how well the training is working, average over recent samples:
-        //if (trainingPass % 100000 == 0)
-            //cout << "Net recent average error: " << myNet.getRecentAverageError() << endl;
-    }
-    myNet.printNeuralNet("neuralNet.txt", topology);
-}
+        myNet.printNeuralNet("neuralNet.txt", topology);
+    //}
     cout << endl << "Done" << endl;
 }
