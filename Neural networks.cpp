@@ -115,7 +115,7 @@ private:
     long double m_gradient;
 };
 
-long double Neuron::eta = 0.1;
+long double Neuron::eta = 0.15;
 long double Neuron::alpha = 0;
 
 
@@ -213,7 +213,7 @@ void Net::printNeuralNet(const string filename, const vector<unsigned>& topology
 {
     cout << endl << "Saving neural net...";
     ofstream fout(filename);
-    fout.precision(300);
+    fout.precision(17);
     unsigned numLayers = unsigned(topology.size());
     fout << numLayers << '\n';
     for (int i = 0; i < topology.size(); ++i)
@@ -348,7 +348,7 @@ int main()
         trainData.getTopology(topology);
         Net myNet(topology);
         ifstream fin("neuralNet.txt");
-        fin.precision(300);
+        fin.precision(17);
         if (fin.is_open()) {
             Net myNet1(&fin, &topology);
             myNet = myNet1;
