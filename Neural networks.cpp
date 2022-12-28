@@ -8,6 +8,174 @@
 
 using namespace std;
 
+//Process a binary PPM file
+#include <vector>
+#include <string>
+
+#ifndef PPM_H
+#define PPM_H
+
+class ppm {
+    void init();
+    //info about the PPM file (height and width)
+    unsigned int nr_lines;
+    unsigned int nr_columns;
+
+public:
+    //arrays for storing the R,G,B values
+    std::vector<unsigned char> r;
+    std::vector<unsigned char> g;
+    std::vector<unsigned char> b;
+    //
+    unsigned int height;
+    unsigned int width;
+    unsigned int max_col_val;
+    //total number of elements (pixels)
+    unsigned int size;
+
+    ppm();
+    //create a PPM object and fill it with data stored in fname 
+    ppm(const std::string& fname);
+    //create an "epmty" PPM image with a given width and height;the R,G,B arrays are filled with zeros
+    ppm(const unsigned int _width, const unsigned int _height);
+    //read the PPM image from fname
+    void read(const std::string& fname);
+    //write the PPM image in fname
+    void write(const std::string& fname);
+};
+
+#endif
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <exception>
+
+//init with default values
+
+void ppm::init() {
+    width = 0;
+    height = 0;
+    max_col_val = 255;
+}
+
+//create a PPM object
+
+ppm::ppm() {
+    init();
+}
+
+//create a PPM object and fill it with data stored in fname 
+
+ppm::ppm(const std::string& fname) {
+    init();
+    read(fname);
+}
+
+//create an "epmty" PPM image with a given width and height;the R,G,B arrays are filled with zeros
+
+ppm::ppm(const unsigned int _width, const unsigned int _height) {
+    init();
+    width = _width;
+    height = _height;
+    nr_lines = height;
+    nr_columns = width;
+    size = width * height;
+
+    // fill r, g and b with 0
+    r.resize(size);
+    g.resize(size);
+    b.resize(size);
+}
+
+//read the PPM image from fname
+
+void ppm::read(const std::string& fname) {
+    std::ifstream inp(fname.c_str(), std::ios::in | std::ios::binary);
+    if (inp.is_open()) {
+        std::string line;
+        std::getline(inp, line);
+        if (line != "P6") {
+            std::cout << "Error. Unrecognized file format." << std::endl;
+            return;
+        }
+        std::getline(inp, line);
+        while (line[0] == '#') {
+            std::getline(inp, line);
+        }
+        std::stringstream dimensions(line);
+
+        try {
+            dimensions >> width;
+            dimensions >> height;
+            nr_lines = height;
+            nr_columns = width;
+        }
+        catch (std::exception& e) {
+            std::cout << "Header file format error. " << e.what() << std::endl;
+            return;
+        }
+
+        std::getline(inp, line);
+        std::stringstream max_val(line);
+        try {
+            max_val >> max_col_val;
+        }
+        catch (std::exception& e) {
+            std::cout << "Header file format error. " << e.what() << std::endl;
+            return;
+        }
+
+        size = width * height;
+
+        r.reserve(size);
+        g.reserve(size);
+        b.reserve(size);
+
+        char aux;
+        for (unsigned int i = 0; i < size; ++i) {
+            inp.read(&aux, 1);
+            r[i] = (unsigned char)aux;
+            inp.read(&aux, 1);
+            g[i] = (unsigned char)aux;
+            inp.read(&aux, 1);
+            b[i] = (unsigned char)aux;
+        }
+    }
+    else {
+        std::cout << "Error. Unable to open " << fname << std::endl;
+    }
+    inp.close();
+}
+
+//write the PPM image in fname
+
+void ppm::write(const std::string& fname) {
+    std::ofstream inp(fname.c_str(), std::ios::out | std::ios::binary);
+    if (inp.is_open()) {
+
+        inp << "P6\n";
+        inp << width;
+        inp << " ";
+        inp << height << "\n";
+        inp << max_col_val << "\n";
+
+        char aux;
+        for (unsigned int i = 0; i < size; ++i) {
+            aux = (char)r[i];
+            inp.write(&aux, 1);
+            aux = (char)g[i];
+            inp.write(&aux, 1);
+            aux = (char)b[i];
+            inp.write(&aux, 1);
+        }
+    }
+    else {
+        std::cout << "Error. Unable to open " << fname << std::endl;
+    }
+    inp.close();
+}
+
 
 class TrainingData
 {
@@ -56,6 +224,18 @@ unsigned TrainingData::getNextInputs(vector<long double>& inputVals)
         long double oneValue;
         while (ss >> oneValue)
             inputVals.push_back(oneValue);
+    } else
+    if (label.compare("ppm:") == 0) {
+        string oneValue;
+        ss >> oneValue;
+        oneValue += ".ppm";
+        ppm img(oneValue);
+        unsigned kk = 0;
+        for(int i = 0; i < 64; ++i)
+            for (int j = 0; j < 64; ++j) {
+                inputVals.push_back(img.r[kk]);
+                ++kk;
+            }
     }
     return unsigned(inputVals.size());
 }
@@ -115,7 +295,7 @@ private:
     long double m_gradient;
 };
 
-long double Neuron::eta = 0.15;
+long double Neuron::eta = 0.05;
 long double Neuron::alpha = 0;
 
 
@@ -211,7 +391,10 @@ long double Net::m_recentAverageSmoothingFactor = 100.0;
 
 void Net::printNeuralNet(const string filename, const vector<unsigned>& topology)
 {
-    cout << endl << "Saving neural net...";
+    if(filename != "BestNeuralNet.txt")
+        cout << endl << "Saving neural net...";
+    else
+        cout << endl << "Saving as best neural net...";
     ofstream fout(filename);
     fout.precision(17);
     unsigned numLayers = unsigned(topology.size());
@@ -230,7 +413,10 @@ void Net::printNeuralNet(const string filename, const vector<unsigned>& topology
         }
     }
     fout.close();
-    cout << endl << "Saved succesfully";
+    if (filename != "BestNeuralNet.txt")
+        cout << endl << "Saved succesfully";
+    else
+        cout << endl << "Saved succesfully";
 }
 
 
@@ -337,17 +523,45 @@ void showVectorVals(string label, vector<long double>& v)
     cout << endl;
 }
 
-int main()
+unsigned showVectorMaxVals(string label, vector<long double>& v, bool pri)
 {
-    const bool train = 1;
-    unsigned inARow = 0;
-    const bool _PrintRes = 0;
+    long double max = -2;
+    unsigned num = 0;
+    if(pri)
+        cout << label << " ";
+    for (unsigned i = 0; i < v.size(); ++i)
+        if (v[i] >= max) {
+            max = v[i];
+            num = i;
+        }
+    if(pri)
+        cout << num << endl;
+    return num;
+}
+
+
+
+int main(int argc, char** argv)
+{
+    bool train = 0;
+    bool _PrintRes = 1;
+    //if (argc >= 2)
+      //  train = atoi(argv[1]);
+    //if (argc == 3)
+      //  _PrintRes = atoi(argv[2]);
+    long double bestError = 999;
     for (int i = 0; i < 10000; ++i) {
+        unsigned inARow = 0;
+        long double AvgError = 0;
         TrainingData trainData("trainingData.txt");
         vector<unsigned> topology;
         trainData.getTopology(topology);
         Net myNet(topology);
-        ifstream fin("neuralNet.txt");
+        ifstream fin;
+        if(train)
+            fin.open("neuralNet.txt");
+        else
+            fin.open("BestNeuralNet.txt");
         fin.precision(17);
         if (fin.is_open()) {
             Net myNet1(&fin, &topology);
@@ -355,38 +569,26 @@ int main()
         }
         fin.close();
         vector<long double> inputVals, targetVals, resultVals;
-        int trainingPass = 0;
+        unsigned trainingPass = 0;
         while (!trainData.isEof()) {
             ++trainingPass;
             if (_PrintRes)
-                cout << endl << "Pass " << trainingPass;
+                cout << endl << "Number " << (trainingPass - 1) % 10 << '\n';
             // Get new input data and feed it forward:
             if (trainData.getNextInputs(inputVals) != topology[0])
                 break;
-            if(_PrintRes)
-                showVectorVals(": Inputs:", inputVals);
+            //if(_PrintRes)
+                //showVectorVals(": Inputs:", inputVals);
             myNet.feedForward(inputVals);
             // Collect the net's actual output results:
             myNet.getResults(resultVals);
-            if (_PrintRes)
-                showVectorVals("Outputs:", resultVals);
+            unsigned out = 0;
+            out = showVectorMaxVals("Outputs:", resultVals, _PrintRes);
             // Train the net what the outputs should have been:
             trainData.getTargetOutputs(targetVals);
-            if (_PrintRes)
-                showVectorVals("Targets:", targetVals);
-            if (targetVals[0] == resultVals[0]) {
-                //cout << endl << resultVals[0];
+            showVectorMaxVals("Targets:", targetVals, _PrintRes);
+            if (targetVals[out] == 1.0)
                 ++inARow;
-            }
-            else
-                inARow = 0;
-            if (inARow == 400)
-            {
-                cout << endl << "It's working";
-                inARow = 0;
-                i = 1000;
-                break;
-            }
             if (train) {
                 assert(targetVals.size() == topology.back());
                 myNet.backProp(targetVals);
@@ -394,10 +596,19 @@ int main()
             // Report how well the training is working, average over recent samples:
             if (_PrintRes && train)
                 cout << "Net recent average error: " << myNet.getRecentAverageError() << endl;
+            AvgError += myNet.getRecentAverageError();
         }
-        myNet.printNeuralNet("neuralNet.txt", topology);
+        AvgError /= trainingPass;
         cout << endl << i;
-        cout << endl << "Net recent average error: " << myNet.getRecentAverageError() << endl;
+        if(train)
+            myNet.printNeuralNet("neuralNet.txt", topology);
+        if (bestError >= AvgError && train){
+            myNet.printNeuralNet("BestNeuralNet.txt", topology);
+            bestError = AvgError;
+        }
+        if(train)
+            cout << endl << "Data set recent average error: " << AvgError << endl;
+        cout << "Data set accuracy: " << long double(long double(long double(inARow)/long double(trainingPass)) * 100) << '%' << endl;
     }
     cout << endl << "Done" << endl;
 }
