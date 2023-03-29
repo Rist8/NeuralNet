@@ -1,5 +1,5 @@
 # NeuralNet
-Neural network on c++
+BPFF Neural network on c++
 
 
 
