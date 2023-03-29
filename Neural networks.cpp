@@ -5,15 +5,19 @@
 #include <cmath>
 #include <fstream>
 #include <sstream>
+#include <functional>
+#include <string>
 
 using namespace std;
 
-//Process a binary PPM file
-#include <vector>
-#include <string>
+constexpr auto TANH = 0, ARCTAN = 1;
+constexpr double _PI = 3.14159265358979323846, _PI_2 = _PI / 2;
 
-#ifndef PPM_H
-#define PPM_H
+//                ****************************
+//                ****************************
+//                 PPM files read/write class
+//                ****************************
+//                ****************************
 
 class ppm {
     void init();
@@ -43,13 +47,6 @@ public:
     //write the PPM image in fname
     void write(const std::string& fname);
 };
-
-#endif
-
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <exception>
 
 //init with default values
 
@@ -176,13 +173,57 @@ void ppm::write(const std::string& fname) {
     inp.close();
 }
 
+//                **********************************************************
+//                **********************************************************
+//                   Activation functions structure, array initialisation
+//                **********************************************************
+//                **********************************************************
+
+struct Activation_Function
+{
+    std::function<long double(long double)> func;
+    std::function<long double(long double)> deriv_func;
+    string name;
+};
+
+// variable for amount of available activation functions
+const unsigned Functions_amount = 3;
+Activation_Function Activation_Functions[Functions_amount];
+
+// function for initialisation of activation functions array elements
+void initFunctions() {
+    Activation_Functions[0].func = [&](long double x) {return tanh(x); };
+    Activation_Functions[0].deriv_func = [&](long double x) {return 1.0 - pow(tanh(x), 2); };
+    Activation_Functions[0].name = "TANH";
+    Activation_Functions[1].func = [&](long double x) {return (atan(x) / _PI_2); };
+    Activation_Functions[1].deriv_func = [&](long double x) {return (1 / (1 + pow(x, 2)) / _PI_2); };
+    Activation_Functions[1].name = "ATAN";
+    Activation_Functions[2].func = [&](long double x) {return 1 / (1 + exp(-x)); };
+    Activation_Functions[2].deriv_func = [&](long double x) {return exp(-x) / pow(1 + exp(-x), 2); };
+    Activation_Functions[2].name = "SIGM";
+}
+
+
+// structure for possibility to choose neuron layers activation function
+struct Neuron_Layer
+{
+    unsigned amount, Activation_function = TANH;
+};
+
+
+
+//                ******************************************************************
+//                ******************************************************************
+//                   Class for training data and NN topology read/write from files
+//                ******************************************************************
+//                ******************************************************************
 
 class TrainingData
 {
 public:
     TrainingData(const string filename);
     bool isEof(void) { return m_trainingDataFile.eof(); }
-    void getTopology(vector<unsigned>& topology);
+    void getTopology(vector<Neuron_Layer>& topology);
     // Returns the number of input values read from the file:
     unsigned getNextInputs(vector<long double>& inputVals);
     unsigned getTargetOutputs(vector<long double>& targetOutputVals);
@@ -190,7 +231,7 @@ private:
     ifstream m_trainingDataFile;
 };
 
-void TrainingData::getTopology(vector<unsigned>& topology)
+void TrainingData::getTopology(vector<Neuron_Layer>& topology)
 {
     string line;
     string label;
@@ -200,11 +241,18 @@ void TrainingData::getTopology(vector<unsigned>& topology)
     if (this->isEof() || label.compare("topology:") != 0)
         abort();
     while (!ss.eof()) {
-        unsigned n;
+        string n;
+        unsigned n_int = 0;
         ss >> n;
-        topology.push_back(n);
+        for (unsigned i = 0; i < Functions_amount; ++i)
+            if (Activation_Functions[i].name == n) n_int = i;
+        if (!isdigit(n[0])) topology[topology.size() - 1].Activation_function = n_int;
+        else {
+            n_int = atoi(n.c_str());
+            Neuron_Layer inp = { n_int, TANH };
+            topology.push_back(inp);
+        }
     }
-    return;
 }
 
 TrainingData::TrainingData(const string filename)
@@ -256,12 +304,15 @@ unsigned TrainingData::getTargetOutputs(vector<long double>& targetOutputVals)
     return unsigned(targetOutputVals.size());
 }
 
+//                ******************************************************************
+//                ******************************************************************
+//                     Structures and class for the main part of NN - neuron
+
 struct Connection
 {
     long double weight;
     long double deltaWeight;
 };
-
 
 class Neuron;
 
@@ -270,7 +321,7 @@ typedef vector<Neuron> Layer;
 class Neuron
 {
 public:
-    Neuron(unsigned numOutputs, unsigned myIndex);
+    Neuron(unsigned numOutputs, unsigned myIndex, unsigned myType);
     void setOutputVal(long double val) { m_outputVal = val; }
     long double getOutputVal(void) const { return m_outputVal; }
     void feedForward(const Layer& prevLayer);
@@ -285,13 +336,12 @@ public:
 private:
     static long double eta;
     static long double alpha;
-    static long double transferFunction(long double x);
-    static long double transferFunctionDerivative(long double x);
-    static long double randomWeight(void) { return rand() / long double(RAND_MAX); }
+    long double randomWeight(void) { return rand() / long double(RAND_MAX); }
     long double sumDOW(const Layer& nextLayer) const;
     long double m_outputVal;
     vector<Connection> m_outputWeights;
     unsigned m_myIndex;
+    unsigned m_type;
     long double m_gradient;
 };
 
@@ -329,23 +379,13 @@ long double Neuron::sumDOW(const Layer& nextLayer) const
 void Neuron::calcHiddenGradients(const Layer& nextLayer)
 {
     long double dow = sumDOW(nextLayer);
-    m_gradient = dow * Neuron::transferFunctionDerivative(m_outputVal);
+    m_gradient = dow * Activation_Functions[this->m_type].deriv_func(m_outputVal);
 }
 
 void Neuron::calcOutputGradients(long double targetVal)
 {
     long double delta = targetVal - m_outputVal;
-    m_gradient = delta * Neuron::transferFunctionDerivative(m_outputVal);
-}
-
-long double Neuron::transferFunction(long double x)
-{
-    return tanh(x);
-}
-
-long double Neuron::transferFunctionDerivative(long double x)
-{
-    return 1.0 - tanh(x) * tanh(x);
+    m_gradient = delta * Activation_Functions[this->m_type].deriv_func(m_outputVal);
 }
 
 void Neuron::feedForward(const Layer& prevLayer)
@@ -355,29 +395,35 @@ void Neuron::feedForward(const Layer& prevLayer)
         sum += prevLayer[n].getOutputVal() *
             prevLayer[n].m_outputWeights[m_myIndex].weight;
     }
-    m_outputVal = Neuron::transferFunction(sum);
+    m_outputVal = Activation_Functions[this->m_type].func(sum);
 }
 
-Neuron::Neuron(unsigned numOutputs, unsigned myIndex)
+Neuron::Neuron(unsigned numOutputs, unsigned myIndex, unsigned myType)
 {
     for (unsigned c = 0; c < numOutputs; ++c) {
         m_outputWeights.push_back(Connection());
         m_outputWeights.back().weight = randomWeight();
     }
     m_myIndex = myIndex;
+    m_type = myType;
 }
 
+//                ************************
+//                ************************
+//                   Main class for NN
+//                ************************
+//                ************************
 
 class Net
 {
 public:
-    Net(const vector<unsigned>& topology);
-    Net(ifstream *fin, vector<unsigned>* topology);
+    Net(const vector<Neuron_Layer>& topology);
+    Net(ifstream *fin, vector<Neuron_Layer>* topology);
     void feedForward(const vector<long double>& inputVals);
     void backProp(const vector<long double>& targetVals);
     void getResults(vector<long double>& resultVals) const;
     long double getRecentAverageError(void) const { return m_recentAverageError; }
-    void printNeuralNet(const string filename, const vector<unsigned>& topology);
+    void printNeuralNet(const string filename, const vector<Neuron_Layer>& topology);
 private:
     // m_layers[layerNum][neuronNum]
     vector<Layer> m_layers;
@@ -389,7 +435,7 @@ private:
 
 long double Net::m_recentAverageSmoothingFactor = 100.0;
 
-void Net::printNeuralNet(const string filename, const vector<unsigned>& topology)
+void Net::printNeuralNet(const string filename, const vector<Neuron_Layer>& topology)
 {
     if(filename != "BestNeuralNet.txt")
         cout << endl << "Saving neural net...";
@@ -399,13 +445,16 @@ void Net::printNeuralNet(const string filename, const vector<unsigned>& topology
     fout.precision(17);
     unsigned numLayers = unsigned(topology.size());
     fout << numLayers << '\n';
-    for (int i = 0; i < topology.size(); ++i)
-        fout << topology[i] << ' ';
+    for (int i = 0; i < topology.size(); ++i) {
+        fout << topology[i].amount << ' ';
+        if (topology[i].Activation_function != TANH)
+            fout << Activation_Functions[topology[i].Activation_function].name << ' ';
+    }
     for (unsigned layerNum = 0; layerNum < numLayers; ++layerNum) {
 
-        unsigned numOutputs = layerNum == topology.size() - 1 ? 0 : topology[static_cast<std::vector<unsigned int, std::allocator<unsigned int>>::size_type>(layerNum) + 1];
+        unsigned numOutputs = layerNum == topology.size() - 1 ? 0 : topology[layerNum + 1].amount;
         fout << '\n' << numOutputs << '\n';
-        for (unsigned neuronNum = 0; neuronNum < topology[layerNum]; ++neuronNum) {
+        for (unsigned neuronNum = 0; neuronNum < topology[layerNum].amount; ++neuronNum) {
             fout << m_layers[layerNum][neuronNum].getOutputVal() << ' ' << neuronNum << ' ' << m_layers[layerNum][neuronNum].getGradient() << '\n';
             vector<Connection> outputWeights = m_layers[layerNum][neuronNum].getOutputWeights();
             for (unsigned i = 0; i < numOutputs; ++i)
@@ -466,21 +515,24 @@ void Net::feedForward(const vector<long double>& inputVals)
     }
 }
 
-Net::Net(const vector<unsigned>& topology)
+Net::Net(const vector<Neuron_Layer>& topology)
 {
     m_recentAverageError = 0;
     m_error = 0;
     unsigned numLayers = unsigned(topology.size());
     for (unsigned layerNum = 0; layerNum < numLayers; ++layerNum) {
         m_layers.push_back(Layer());
-        unsigned numOutputs = layerNum == topology.size() - 1 ? 0 : topology[static_cast<std::vector<unsigned int, std::allocator<unsigned int>>::size_type>(layerNum) + 1];
-        for (unsigned neuronNum = 0; neuronNum < topology[layerNum]; ++neuronNum)
-            m_layers.back().push_back(Neuron(numOutputs, neuronNum));
+        unsigned numOutputs = ((layerNum == topology.size() - 1) ? 0 : 
+                                topology[layerNum + 1].amount);
+        for (unsigned neuronNum = 0; neuronNum < topology[layerNum].amount; ++neuronNum)
+            m_layers.back().push_back(Neuron(numOutputs, neuronNum, topology[layerNum].Activation_function));
         m_layers.back().back().setOutputVal(1.0);
     }
 }
 
-Net::Net(ifstream *fin, vector<unsigned>* topology)
+
+
+Net::Net(ifstream *fin, vector<Neuron_Layer>* topology)
 {
     m_recentAverageError = 0;
     m_error = 0;
@@ -488,19 +540,27 @@ Net::Net(ifstream *fin, vector<unsigned>* topology)
     (*topology).clear();
     *fin >> numLayers;
     for (unsigned i = 0; i < numLayers; ++i) {
-        unsigned t = 0;
+        string t;
+        unsigned t_int = 0;
         *fin >> t;
-        (*topology).push_back(t);
+        for (unsigned i = 0; i < Functions_amount; ++i)
+            if (Activation_Functions[i].name == t) t_int = i;
+        if (!isdigit(t[0])) (*topology)[(*topology).size() - 1].Activation_function = t_int;
+        else {
+            t_int = atoi(t.c_str());
+            Neuron_Layer inp = { t_int, TANH };
+            (*topology).push_back(inp);
+        }
     }
     for (unsigned layerNum = 0; layerNum < numLayers; ++layerNum) {
         m_layers.push_back(Layer());
         unsigned numOutputs = 0;
         *fin >> numOutputs;
-        for (unsigned neuronNum = 0; neuronNum < (*topology)[layerNum]; ++neuronNum) {
+        for (unsigned neuronNum = 0; neuronNum < (*topology)[layerNum].amount; ++neuronNum) {
             long double val, gradient;
             unsigned num;
             *fin >> val >> num >> gradient;
-            m_layers.back().push_back(Neuron(numOutputs, num));
+            m_layers.back().push_back(Neuron(numOutputs, num, TANH));
             m_layers.back().back().setGradient(gradient);
             m_layers.back().back().setOutputVal(val);
             vector<Connection> outputWeights;
@@ -514,6 +574,11 @@ Net::Net(ifstream *fin, vector<unsigned>* topology)
     }
 }
 
+//                *******************************************
+//                *******************************************
+//                  Functions making beautiful console log
+//                *******************************************
+//                *******************************************
 
 void showVectorVals(string label, vector<long double>& v)
 {
@@ -539,10 +604,11 @@ unsigned showVectorMaxVals(string label, vector<long double>& v, bool pri)
     return num;
 }
 
-
+//      Main function
 
 int main(int argc, char** argv)
 {
+    initFunctions();
     bool train = 0;
     bool _PrintRes = 1;
     //if (argc >= 2)
@@ -554,7 +620,7 @@ int main(int argc, char** argv)
         unsigned inARow = 0;
         long double AvgError = 0;
         TrainingData trainData("trainingData.txt");
-        vector<unsigned> topology;
+        vector<Neuron_Layer> topology;
         trainData.getTopology(topology);
         Net myNet(topology);
         ifstream fin;
@@ -575,7 +641,7 @@ int main(int argc, char** argv)
             if (_PrintRes)
                 cout << endl << "Number " << (trainingPass - 1) % 10 << '\n';
             // Get new input data and feed it forward:
-            if (trainData.getNextInputs(inputVals) != topology[0])
+            if (trainData.getNextInputs(inputVals) != topology[0].amount)
                 break;
             //if(_PrintRes)
                 //showVectorVals(": Inputs:", inputVals);
