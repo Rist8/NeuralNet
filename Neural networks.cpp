@@ -656,7 +656,7 @@ int main(int argc, char** argv)
             if (targetVals[out] == 1.0)
                 ++inARow;
             if (train) {
-                assert(targetVals.size() == topology.back());
+                assert(targetVals.size() == topology.back().amount);
                 myNet.backProp(targetVals);
             }
             // Report how well the training is working, average over recent samples:
