@@ -1,5 +1,5 @@
 # NeuralNet
-Backpropagation feed forward neural network written in c++
+Backpropagation feed forward neural network written in c++ with support of .ppm images as input
 
 
 Train data format should be:
