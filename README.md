@@ -1,5 +1,5 @@
 # NeuralNet
-BPFF (backpropogation feed forward) Neural network written in c++
+Backpropagation feed forward neural network written in c++
 
 
 Train data format should be:
